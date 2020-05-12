@@ -5,6 +5,7 @@ import json
 import datetime
 import nessusconfig
 from flask_caching import Cache
+from datetime import datetime
 
 config = {
     "CACHE_TYPE": "simple",  # Flask-Caching related configs
@@ -24,19 +25,25 @@ hostnames = {}
 @cache.cached(timeout=300) 
 def getscansummary():
     scans = []
-    scansummary={}
+    scansummary=[]
     nessusdata = requests.get(
         f"https://{ nessusconfig.host }/scans", headers=headers, verify=False).json()
     for scan in nessusdata["scans"]:
         if scan["folder_id"] == 1236:
             scans.append(scan['id'])
     for scan in scans:
-        scandata = requests.get(
+        rawscandata = requests.get(
             f"https://{ nessusconfig.host }/scans/" + str(scan), headers=headers, verify=False).json()
         try:
-            scansummary[scandata["info"]["name"]]= len(scandata["hosts"])
-        except:
-            print("Scan not yet run")
+            scandata={}
+            scandata["name"]=rawscandata["info"]["name"]
+            scandata["hosts"]=len(rawscandata["hosts"])
+            scandata["network"]=rawscandata["info"]["targets"]
+            scandate=datetime.fromtimestamp(rawscandata["info"]["timestamp"])
+            scandata["lastScan"]=str(scandate)
+            scansummary.append(scandata)
+        except KeyError as e:
+            print("Scan not yet run" + str(e))
     return json.dumps(scansummary)
 
 
