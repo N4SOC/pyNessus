@@ -5,6 +5,7 @@ import json
 import datetime
 import nessusconfig
 from flask_caching import Cache
+from datetime import datetime
 
 config = {
     "CACHE_TYPE": "simple",  # Flask-Caching related configs
@@ -16,7 +17,7 @@ cache = Cache(app)
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning) # Prevent errors when connecting without valid SSL cert
 
-headers = {"X-ApiKeys": f"accessKey={ nessusconfig.accesskey }; secretKey={ nessusconfig.secretkey }"}
+headers = {"X-ApiKeys": f"accessKey={ nessusconfig.accessKey }; secretKey={ nessusconfig.secretKey }"}
 hostnames = {}
 
 
@@ -24,19 +25,25 @@ hostnames = {}
 @cache.cached(timeout=300) 
 def getscansummary():
     scans = []
-    scansummary={}
+    scansummary=[]
     nessusdata = requests.get(
         f"https://{ nessusconfig.host }/scans", headers=headers, verify=False).json()
     for scan in nessusdata["scans"]:
         if scan["folder_id"] == 1236:
             scans.append(scan['id'])
     for scan in scans:
-        scandata = requests.get(
-            f"https://{ nessusconfig.host }scans/" + str(scan), headers=headers, verify=False).json()
+        rawscandata = requests.get(
+            f"https://{ nessusconfig.host }/scans/" + str(scan), headers=headers, verify=False).json()
         try:
-            scansummary[scandata["info"]["name"]]= len(scandata["hosts"])
-        except:
-            print("Scan not yet run")
+            scandata={}
+            scandata["name"]=rawscandata["info"]["name"]
+            scandata["hosts"]=len(rawscandata["hosts"])
+            scandata["network"]=rawscandata["info"]["targets"]
+            scandate=datetime.fromtimestamp(rawscandata["info"]["timestamp"])
+            scandata["lastScan"]=str(scandate)
+            scansummary.append(scandata)
+        except KeyError as e:
+            print("Scan not yet run" + str(e))
     return json.dumps(scansummary)
 
 
@@ -47,13 +54,13 @@ def getvulnsummary():
     hosts = []
     allvulns = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0}
     nessusdata = requests.get(
-        f"https://{ nessusconfig.host }scans", headers=headers, verify=False).json()
+        f"https://{ nessusconfig.host }/scans", headers=headers, verify=False).json()
     for scan in nessusdata["scans"]:
         if scan["folder_id"] == 1236:
             scans.append(scan['id'])
     for scan in scans:
         scandata = requests.get(
-            f"https://{ nessusconfig.host }scans/{ scan }", headers=headers, verify=False).json()
+            f"https://{ nessusconfig.host }/scans/{ scan }", headers=headers, verify=False).json()
         try:
             for vuln in scandata["vulnerabilities"]:
                 allvulns[vuln["severity"]] += 1
@@ -68,13 +75,13 @@ def gethostdetails():
     scans = []
     hosts = []
     nessusdata = requests.get(
-        f"https://{ nessusconfig.host }scans", headers=headers, verify=False).json()
+        f"https://{ nessusconfig.host }/scans", headers=headers, verify=False).json()
     for scan in nessusdata["scans"]:
         if scan["folder_id"] == 1236:
             scans.append(scan['id'])
     for scan in scans:
         scandata = requests.get(
-            f"https://{ nessusconfig.host }scans/{ scan }", headers=headers, verify=False).json()
+            f"https://{ nessusconfig.host }/scans/{ scan }", headers=headers, verify=False).json()
         try:
             for host in scandata["hosts"]:
                 hosts.append(host)
@@ -95,18 +102,18 @@ def getvulndetails():
     vulns = {}
     print("Start: " + str(datetime.datetime.now().time()))
     nessusdata = requests.get(
-        f"https://{ nessusconfig.host }scans", headers=headers, verify=False).json()
+        f"https://{ nessusconfig.host }/scans", headers=headers, verify=False).json()
     for scan in nessusdata["scans"]:
         if scan["folder_id"] == 1236: # Loop over scans in 2020 folder
             scans.append(scan['id'])
     for scan in scans: # For each scan ID, get scan details
         scandata = requests.get(
-            f"https://{ nessusconfig.host }scans/{ scan }", headers=headers, verify=False).json()
+            f"https://{ nessusconfig.host }/scans/{ scan }", headers=headers, verify=False).json()
         try:
             for host in scandata["hosts"]: # For each host in that scan get host details
                 hostname = host["hostname"]
                 vulns[hostname] = []
-                hostdata = requests.get(f"https://{ nessusconfig.host }scans/{ scan }/hosts/{ host['host_id'] }", headers=headers, verify=False).json()
+                hostdata = requests.get(f"https://{ nessusconfig.host }/scans/{ scan }/hosts/{ host['host_id'] }", headers=headers, verify=False).json()
                 for vuln in hostdata["vulnerabilities"]: # For each vuln on the host get vuln details
                     vulns[hostname].append(vuln)
         except KeyError:
